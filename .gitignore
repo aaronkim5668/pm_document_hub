@@ -5,3 +5,5 @@ node_modules/
 storage/
 coverage/
 tsconfig.tsbuildinfo
+
+.gstack/
