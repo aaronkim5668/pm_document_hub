@@ -1,8 +1,10 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 export function ChangeCandidateForm({ documentVersionId }: { documentVersionId: string }) {
+  const router = useRouter();
   const [changeType, setChangeType] = useState("modify");
   const [category, setCategory] = useState("notice");
   const [description, setDescription] = useState("");
@@ -30,6 +32,7 @@ export function ChangeCandidateForm({ documentVersionId }: { documentVersionId: 
     setDescription("");
     setDraft("");
     setMessage("pending 변경사항이 추가되었습니다.");
+    router.refresh();
   }
 
   return (
