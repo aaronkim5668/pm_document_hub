@@ -1,0 +1,342 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum DocType {
+  system_spec
+  character_spec
+  skill_spec
+  bm_spec
+  event_spec
+  balance_spec
+  patch_note
+  meeting_note
+  ux_spec
+  economy_spec
+  etc
+}
+
+enum DocStatus {
+  draft
+  review
+  approved
+  released
+  deprecated
+  unknown
+}
+
+enum FileType {
+  pdf
+  pptx
+  docx
+  xlsx
+  csv
+  txt
+  md
+  image
+  url
+  json
+  other
+}
+
+enum UploadStatus {
+  pending
+  success
+  failed
+}
+
+enum ParseStatus {
+  pending
+  success
+  partial
+  failed
+  skipped
+}
+
+enum ChangeType {
+  add
+  modify
+  remove
+  clarify
+}
+
+enum PatchNoteCategory {
+  major_update
+  new_content
+  balance
+  system_improvement
+  bug_fix
+  notice
+}
+
+enum ReviewStatus {
+  pending
+  approved
+  rejected
+  deferred
+}
+
+enum ReviewIssueType {
+  low_confidence
+  conflict
+  version_conflict
+  status_conflict
+  no_version
+  date_conflict
+  duplicate_hash
+  unknown_doc_type
+}
+
+enum ImportMode {
+  raw_upload
+  ai_import
+  manual
+}
+
+enum AIProvider {
+  openai
+  claude
+  gemini
+  local
+  none
+}
+
+enum PatchNoteStatus {
+  draft
+  review
+  released
+}
+
+model Document {
+  id         String            @id @default(uuid())
+  doc_type   DocType
+  created_at DateTime          @default(now())
+  updated_at DateTime          @updatedAt
+
+  versions   DocumentVersion[]
+}
+
+model DocumentVersion {
+  id                  String             @id @default(uuid())
+  document_id         String
+  document            Document           @relation(fields: [document_id], references: [id])
+  version_label       String?
+  version_date        DateTime?
+  version_hash        String
+  status              DocStatus           @default(unknown)
+  is_latest           Boolean             @default(false)
+  import_mode         ImportMode
+  uploaded_at         DateTime            @default(now())
+  uploaded_by         String?
+
+  raw_source          RawSource?
+  normalized_doc      NormalizedDocument?
+  change_candidates   ChangeCandidate[]
+  review_queue_items  ReviewQueueItem[]
+  tags                DocumentTag[]
+  ai_usage_logs       AIUsageLog[]
+
+  @@index([document_id])
+  @@index([document_id, is_latest])
+  @@index([version_hash])
+  @@index([status])
+}
+
+model RawSource {
+  id                  String          @id @default(uuid())
+  document_version_id String          @unique
+  document_version    DocumentVersion @relation(fields: [document_version_id], references: [id])
+  original_filename   String
+  file_type           FileType
+  storage_path        String
+  file_size_bytes     Int
+  file_hash           String
+  upload_status       UploadStatus    @default(pending)
+  parse_status        ParseStatus     @default(pending)
+  parse_error         String?
+  parse_warning       String?
+  created_at          DateTime        @default(now())
+
+  extracted_texts     ExtractedText[]
+
+  @@index([file_hash])
+  @@index([upload_status])
+  @@index([parse_status])
+}
+
+model ExtractedText {
+  id                String    @id @default(uuid())
+  raw_source_id     String
+  raw_source        RawSource @relation(fields: [raw_source_id], references: [id])
+  content           String    @db.Text
+  extraction_method String
+  confidence        Float?
+  page_count        Int?
+  char_count        Int?
+  created_at        DateTime  @default(now())
+}
+
+model NormalizedDocument {
+  id                  String          @id @default(uuid())
+  document_version_id String          @unique
+  document_version    DocumentVersion @relation(fields: [document_version_id], references: [id])
+  title               String
+  doc_type            DocType
+  category            String?
+  summary             String?         @db.Text
+  review_findings     Json?
+  ai_generated        Boolean         @default(false)
+  ai_provider         AIProvider?
+  ai_model            String?
+  ai_cost_tokens      Int?
+  created_at          DateTime        @default(now())
+  updated_at          DateTime        @updatedAt
+
+  design_items        DesignItem[]
+}
+
+model DesignItem {
+  id                String             @id @default(uuid())
+  normalized_doc_id String
+  normalized_doc    NormalizedDocument @relation(fields: [normalized_doc_id], references: [id])
+  item_name         String
+  item_type         String
+  description       String?            @db.Text
+  order_index       Int                @default(0)
+  created_at        DateTime           @default(now())
+
+  change_candidates ChangeCandidate[]
+}
+
+model ChangeCandidate {
+  id                    String               @id @default(uuid())
+  document_version_id   String
+  document_version      DocumentVersion      @relation(fields: [document_version_id], references: [id])
+  design_item_id        String?
+  design_item           DesignItem?          @relation(fields: [design_item_id], references: [id])
+  change_type           ChangeType
+  change_description    String               @db.Text
+  patch_note_draft      String?              @db.Text
+  category              PatchNoteCategory?
+  review_status         ReviewStatus         @default(pending)
+  reviewed_by           String?
+  reviewed_at           DateTime?
+  created_at            DateTime             @default(now())
+
+  patch_note_candidates PatchNoteCandidate[]
+  review_queue_items    ReviewQueueItem[]
+
+  @@index([review_status])
+  @@index([document_version_id])
+}
+
+model PatchNoteCandidate {
+  id                  String            @id @default(uuid())
+  change_candidate_id String
+  change_candidate    ChangeCandidate   @relation(fields: [change_candidate_id], references: [id])
+  draft_text          String            @db.Text
+  category            PatchNoteCategory
+  is_selected         Boolean           @default(false)
+  created_at          DateTime          @default(now())
+  updated_at          DateTime          @updatedAt
+
+  patch_note_items    PatchNoteItem[]
+
+  @@index([change_candidate_id])
+}
+
+model ReviewQueueItem {
+  id                  String           @id @default(uuid())
+  document_version_id String?
+  document_version    DocumentVersion? @relation(fields: [document_version_id], references: [id])
+  change_candidate_id String?
+  change_candidate    ChangeCandidate? @relation(fields: [change_candidate_id], references: [id])
+  issue_type          ReviewIssueType
+  description         String           @db.Text
+  auto_suggestion     String?          @db.Text
+  status              ReviewStatus     @default(pending)
+  resolved_by         String?
+  resolved_at         DateTime?
+  resolution_note     String?
+  created_at          DateTime         @default(now())
+
+  @@index([status])
+  @@index([issue_type])
+}
+
+model PatchNote {
+  id              String          @id @default(uuid())
+  title           String
+  release_version String
+  patch_date      DateTime?
+  status          PatchNoteStatus @default(draft)
+  created_at      DateTime        @default(now())
+  updated_at      DateTime        @updatedAt
+
+  items           PatchNoteItem[]
+}
+
+model PatchNoteItem {
+  id                      String              @id @default(uuid())
+  patch_note_id           String
+  patch_note              PatchNote           @relation(fields: [patch_note_id], references: [id])
+  patch_note_candidate_id String?
+  patch_note_candidate    PatchNoteCandidate? @relation(fields: [patch_note_candidate_id], references: [id])
+  category                PatchNoteCategory
+  content                 String              @db.Text
+  order_index             Int                 @default(0)
+  created_at              DateTime            @default(now())
+
+  @@index([patch_note_id, category])
+}
+
+model AIUsageLog {
+  id                  String           @id @default(uuid())
+  document_version_id String?
+  document_version    DocumentVersion? @relation(fields: [document_version_id], references: [id])
+  event_type          String
+  provider            AIProvider
+  model               String
+  input_tokens        Int
+  output_tokens       Int
+  cost_usd            Decimal          @db.Decimal(10, 6)
+  cache_hit           Boolean          @default(false)
+  file_hash           String?
+  created_at          DateTime         @default(now())
+
+  @@index([provider])
+  @@index([created_at])
+  @@index([file_hash])
+}
+
+model Tag {
+  id         String        @id @default(uuid())
+  name       String        @unique
+  created_at DateTime      @default(now())
+
+  doc_tags   DocumentTag[]
+}
+
+model DocumentTag {
+  document_version_id String
+  document_version    DocumentVersion @relation(fields: [document_version_id], references: [id])
+  tag_id              String
+  tag                 Tag             @relation(fields: [tag_id], references: [id])
+
+  @@id([document_version_id, tag_id])
+}
+
+model AIBudgetConfig {
+  id                    String   @id @default(uuid())
+  monthly_budget_usd    Decimal  @default(0) @db.Decimal(10, 2)
+  current_month_spend   Decimal  @default(0) @db.Decimal(10, 6)
+  budget_month          String
+  is_locked             Boolean  @default(false)
+  alert_threshold_pct   Int      @default(80)
+  updated_at            DateTime @updatedAt
+}

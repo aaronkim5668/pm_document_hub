@@ -1,1 +1,7 @@
 .claude/
+node_modules/
+.next/
+.env
+storage/
+coverage/
+tsconfig.tsbuildinfo

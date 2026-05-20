@@ -224,7 +224,7 @@ volumes:
 | PUT | `/api/settings/budget` | 예산 설정 | 1 |
 | POST | `/api/upload` | Raw 파일 업로드 | 2 |
 | GET | `/api/upload/[id]/status` | 처리 상태 조회 | 2 |
-| POST | `/api/patch-notes` | 패치노트 생성 | 3 |
+| POST | `/api/patch-notes` | 패치노트 생성 | 1 (Week 1) |
 | GET | `/api/patch-notes/[id]` | 패치노트 상세 | 3 |
 | PUT | `/api/patch-notes/[id]` | 패치노트 편집 | 3 |
 
