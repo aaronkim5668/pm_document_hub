@@ -167,6 +167,16 @@
 | **완화** | ① MVP 기간 `prisma migrate reset` 허용 (내부 툴, 데이터 손실 허용). ② 스키마를 안정화한 후 첫 production-grade 마이그레이션 생성. |
 | **수용 기준** | Phase 1 완료 시점에 스키마 안정화 선언, 이후 reset 금지 |
 
+### R-I3. PatchNoteCandidate unique migration 적용 실패
+
+| 항목 | 내용 |
+|---|---|
+| **리스크** | 이미 데이터가 있는 환경에서 `PatchNoteCandidate.change_candidate_id` 중복 데이터가 존재하면 unique index migration이 실패할 수 있음 |
+| **발생 확률** | 낮음 (현재 초기 개발/로컬 환경에서는 정상 적용됨) |
+| **영향** | `prisma migrate dev` 또는 공유 DB migration 적용 실패 |
+| **완화** | 운영 또는 공유 DB 적용 전 중복 데이터 정리 SQL을 실행해야 함. 예: 동일 `change_candidate_id` 그룹에서 보존할 1건을 제외하고 나머지 후보 및 연결된 임시 데이터를 정리 |
+| **수용 기준** | unique migration 적용 전 중복 `change_candidate_id` 조회 결과가 0건 |
+
 ---
 
 ## 4. 주요 트레이드오프 결정 기록
