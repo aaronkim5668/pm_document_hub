@@ -161,7 +161,9 @@
 **검색 동작:**
 - 입력 시 실시간 검색 (debounce 300ms)
 - 검색 대상: `title`, `summary`, `content` (ExtractedText), `tags`, `design_item.item_name`
-- 한국어 지원: pg_bigm 인덱스 활용
+- Week 2 기본 구현은 `SEARCH_MODE=ilike` fallback 기준. pg_bigm 인덱스는 설치된 환경에서만 선택적으로 활용하며, 미설치 시 앱이 깨지면 안 됨
+- 기본 검색 결과는 `is_latest=true` DocumentVersion 중심으로 노출하고 `deprecated` 상태는 제외
+- Tag / DesignItem 조인으로 동일 문서 버전이 중복 노출되지 않도록 버전 ID 기준으로 중복 제거
 
 **검색 결과 카드 구조:**
 ```
@@ -189,6 +191,8 @@
 **수용 기준:**
 - [ ] 검색 없을 때: 최근 10개 문서 + Review Queue 배지 + 패치노트 후보 배지
 - [ ] 검색 결과: 카드 형태, 우선순위 순 정렬
+- [ ] 검색 결과는 latest DocumentVersion 중심이며 deprecated 문서는 기본 제외
+- [ ] 같은 문서/버전은 태그·기획항목 매칭이 여러 번 발생해도 1개 카드만 표시
 - [ ] Deprecated/구버전: 접혀서 "이전 버전 N개 보기" 토글
 - [ ] **[I5] 검색 응답 < 500ms** — 코퍼스 100건 기준, LIMIT 50 응답 측정 (100건은 결과 수가 아니라 테스트 코퍼스 크기)
 

@@ -596,6 +596,7 @@ model AIBudgetConfig {
 ### PostgreSQL Full Text Search (한국어)
 
 > Week 1 Vertical Slice에서는 검색 고도화를 구현하지 않는다. Week 2 검색 구현 시 pg_bigm은 선택 사항이며, 미설치 환경에서는 `SEARCH_MODE=ilike` fallback을 우선 사용한다.
+> Week 2 기본 검색은 `DocumentVersion.is_latest=true`와 `status != deprecated`를 기준으로 조회하고, Tag/DesignItem 매칭으로 인한 중복은 DocumentVersion ID 기준으로 제거한다.
 
 ```sql
 -- pg_bigm 확장 설치 필요 (한국어 n-gram 검색)

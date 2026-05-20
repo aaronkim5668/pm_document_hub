@@ -149,7 +149,7 @@ volumes:
 | # | 태스크 | 산출물 | 예상 시간 |
 |---|---|---|---|
 | 2-1 | 메인 페이지 검색 UI (`/`) | 검색창, 필터, 결과 카드 | 4h |
-| 2-2 | 검색 API (`GET /api/documents/search`) | pg_bigm + FTS, LIMIT 50 + cursor pagination, **[I5] 코퍼스 100건 기준 응답 500ms 이내** (100건은 결과 수가 아닌 테스트 코퍼스 크기). pg_bigm 미설치 시 ILIKE fallback 자동 전환 (`SEARCH_MODE` env var) | 4h |
+| 2-2 | 검색 API (`GET /api/documents/search`) | `SEARCH_MODE=ilike` fallback 우선 구현, latest DocumentVersion 중심, deprecated 제외, LIMIT 50. pg_bigm은 설치된 환경에서만 선택 최적화로 검토하며 미설치 시 앱이 깨지지 않아야 함. **[I5] 코퍼스 100건 기준 응답 500ms 이내** (100건은 결과 수가 아닌 테스트 코퍼스 크기) | 4h |
 | 2-3 | 문서 상세 페이지 (`/docs/[id]`) | 버전 목록, 메타데이터, 변경사항 탭 | 3h |
 | 2-4 | Review Queue UI (`/review`) | pending/deferred 필터, 승인/거부/보류 버튼 | 3h |
 | 2-5 | Review Queue API | 승인 → is_latest 교체, 거부 → deprecated | 2h |

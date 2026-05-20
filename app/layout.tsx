@@ -19,6 +19,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <nav className="nav" aria-label="Primary">
               <Link href="/import">AI Import</Link>
               <Link href="/patch-notes/new">PatchNote</Link>
+              <Link href="/review">Review</Link>
+              <Link href="/settings">Settings</Link>
             </nav>
           </header>
           {children}

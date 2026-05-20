@@ -88,11 +88,11 @@
 
 | # | 기능명 | MVP 포함 | Phase | 제외 시 사유 / Backlog 이동 여부 | 관련 화면 | 관련 모델 |
 |---|---|---|---|---|---|---|
-| C-01 | 메인 검색 화면 (키워드 전문 검색, 한국어 포함) | ✅ | 1 | — | `/` (메인) | pg_bigm 인덱스 |
+| C-01 | 메인 검색 화면 (키워드 검색, 한국어 포함) | ✅ | 1 | Week 2 기본은 `SEARCH_MODE=ilike` fallback. pg_bigm은 선택 최적화 | `/` (메인) | DocumentVersion, NormalizedDocument, Tag, DesignItem |
 | C-02 | 문서 유형별 필터 | ✅ | 1 | — | `/` | Document.doc_type |
 | C-03 | 태그 필터 | ✅ | 1 | — | `/` | DocumentTag |
 | C-04 | 날짜 범위 필터 | ✅ | 1 | — | `/` | DocumentVersion.version_date |
-| C-05 | 검색 응답 500ms 이내 (100건 기준) | ✅ | 1 | 성공 기준 지표 | — | pg_bigm 인덱스 |
+| C-05 | 검색 응답 500ms 이내 (100건 기준) | ✅ | 1 | 성공 기준 지표. ILIKE fallback 기준으로 먼저 검증, pg_bigm은 선택 최적화 | — | DocumentVersion latest 필터 + LIMIT 50 |
 | C-06 | 자연어 시맨틱 검색 (RAG) | ❌ | BACKLOG | 벡터 DB + LLM 인프라 필요 | — | — |
 | C-07 | 고급 벡터 검색 (pg_vector) | ❌ | BACKLOG | pg_bigm + FTS로 MVP 충분 | — | — |
 | C-08 | 문서 유형 자동 분류 (11종) | ✅ | 1 | AI Import: JSON 필드로 수신. Raw Upload: 수동 선택 | `/import`, `/upload` | Document.doc_type |
