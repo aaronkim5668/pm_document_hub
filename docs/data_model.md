@@ -420,7 +420,7 @@ model ChangeCandidate {
 //   (UI 필터 우회 차단 — pending/rejected ChangeCandidate는 절대 패치노트에 포함되지 않음)
 model PatchNoteCandidate {
   id                  String          @id @default(uuid())
-  change_candidate_id String
+  change_candidate_id String          @unique
   change_candidate    ChangeCandidate @relation(fields: [change_candidate_id], references: [id])
 
   draft_text          String          // @db.Text
@@ -594,6 +594,8 @@ model AIBudgetConfig {
 ## 5. 검색 인덱스 설계
 
 ### PostgreSQL Full Text Search (한국어)
+
+> Week 1 Vertical Slice에서는 검색 고도화를 구현하지 않는다. Week 2 검색 구현 시 pg_bigm은 선택 사항이며, 미설치 환경에서는 `SEARCH_MODE=ilike` fallback을 우선 사용한다.
 
 ```sql
 -- pg_bigm 확장 설치 필요 (한국어 n-gram 검색)

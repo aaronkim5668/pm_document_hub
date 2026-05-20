@@ -14,7 +14,7 @@
 | UI | Tailwind CSS + shadcn/ui | 빠른 프로토타이핑 |
 | Backend | Next.js API Routes (서버리스) | 별도 서버 불필요 |
 | ORM | Prisma | PostgreSQL 타입 안전 |
-| DB | PostgreSQL 15+ | pg_bigm 확장 필요 |
+| DB | PostgreSQL 15+ | Week 1은 공식 postgres 이미지 사용. Week 2 검색에서 pg_bigm 또는 ILIKE fallback 검토 |
 | 파일 저장 | 로컬 파일시스템 (MVP) → Supabase Storage (v2) | |
 | 텍스트 추출 | pdf-parse (PDF), mammoth (DOCX), xlsx (XLSX/CSV), officeparser (PPTX) | PPTX는 officeparser 사용 (unzipper+xml2js 대비 한국어 인코딩 안정적) |
 | JSON 검증 | Zod | Ajv 대신 Zod — TypeScript 타입 추론 내장, 필드별 에러 메시지 지원 |
@@ -28,10 +28,10 @@
 - Supabase Storage는 v2로 이동 (외부 의존성 최소화)
 - 환경 변수 `STORAGE_TYPE=local|supabase`로 전환 가능하게 추상화
 
-**pg_bigm 설정**
-- PostgreSQL에 `pg_bigm` 확장 설치 필요 (한국어 n-gram 검색)
-- Docker Compose로 pg_bigm 포함 PostgreSQL 이미지 사용 권장
-- 미설치 시 fallback: `ILIKE '%keyword%'` (느리지만 동작)
+**검색 설정**
+- Week 1 Vertical Slice는 검색 고도화가 범위 밖이므로 공식 `postgres:15` 이미지로 우선 진행
+- Week 2 검색 구현 시 `SEARCH_MODE=ilike` fallback을 기본 동작 기준으로 검토
+- pg_bigm은 설치 가능한 환경에서 선택적으로 활성화하며, 미설치 시 `ILIKE '%keyword%'` fallback으로 동작
 
 **AI API**
 - `.env`의 `OPENAI_API_KEY` 없으면 AI 기능 자동 비활성화
@@ -43,7 +43,7 @@
 
 ```
 [ ] PostgreSQL 설치 (Docker 권장: docker-compose up -d)
-[ ] pg_bigm 확장 활성화: CREATE EXTENSION IF NOT EXISTS pg_bigm;
+[ ] Week 2 검색 구현 시 pg_bigm 활성화 여부 확인. 미설치 환경은 `SEARCH_MODE=ilike` fallback 사용
 [ ] Node.js 20+ 설치
 [ ] pnpm 설치 (또는 npm)
 [ ] .env 파일 설정 (DATABASE_URL, OPENAI_API_KEY, STORAGE_PATH, APP_URL)
@@ -79,16 +79,15 @@
 | `APP_URL` | 앱 접속 URL | `http://172.31.201.23:8787` | PM 머신 내부 IP |
 | `HOST` | dev 서버 바인딩 | `0.0.0.0` | LAN 공유 모드 (R-S1) |
 | `PORT` | dev 서버 포트 | `8787` | 3000(방화벽)/8080(점유) 회피 |
-| `SEARCH_MODE` | 검색 백엔드 | `bigm` | `bigm` \| `ilike` (pg_bigm 미설치 시 ILIKE fallback) |
+| `SEARCH_MODE` | 검색 백엔드 | `ilike` | Week 2 검색 구현 시 `bigm` \| `ilike` 검토. pg_bigm 미설치 시 ILIKE fallback |
 
 ---
 
-**Docker Compose (pg_bigm 포함):**
+**Docker Compose (Week 1 기본 PostgreSQL):**
 ```yaml
-version: '3.8'
 services:
   postgres:
-    image: pgbigm/pg_bigm:15-2.0
+    image: postgres:15
     environment:
       POSTGRES_DB: pm_document_hub
       POSTGRES_USER: postgres
@@ -124,7 +123,7 @@ volumes:
 
 | # | 태스크 | 산출물 | 예상 시간 |
 |---|---|---|---|
-| 1-1 | 프로젝트 초기화 + DB 마이그레이션 + pg_bigm 인덱스 + seed | Next.js + Prisma + Tailwind 설정, `prisma migrate dev`, `CREATE INDEX`, `prisma/seed.ts` (AIBudgetConfig 초기 레코드 — budget=0, all AI locked) | 6h |
+| 1-1 | 프로젝트 초기화 + DB 마이그레이션 + seed | Next.js + Prisma + Tailwind 설정, `prisma migrate dev`, `prisma/seed.ts` (AIBudgetConfig 초기 레코드 — budget=0, all AI locked). 검색 인덱스/pg_bigm은 Week 2로 분리 | 6h |
 | 1-2 | AI Import UI (`/import`) + Zod Schema 검증 + 테스트 | JSON 붙여넣기/파일업로드 UI, `zod` 스키마 정의 (`lib/json-schema.ts`), 필드별 에러 표시, **[I3] `__tests__/json-schema.test.ts`** | 6h |
 | 1-3 | Import Preview (`/import/preview`) + 저장 API + 테스트 | 파싱 결과 표시·편집, 재검증, `POST /api/documents` (DocumentVersion + ChangeCandidate 저장, **[B1] 승인 시 ChangeCandidate 전체 review_status=approved 일괄 설정**), **[I3] `__tests__/change-candidate-approval.test.ts`** | 8h |
 | 1-4 | 버전 판단 로직 (`resolveLatestVersion`) + 테스트 | version_date 기준 is_latest 판단, prisma.$transaction 래핑, **[I3] `__tests__/version-resolver.test.ts`** | 3h |

@@ -1,48 +1,20 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { ensurePatchNoteCandidates } from "@/lib/patch-note-candidates";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const documentVersionId = url.searchParams.get("document_version_id");
 
-  const changes = await prisma.changeCandidate.findMany({
-    where: {
-      review_status: "approved",
-      ...(documentVersionId ? { document_version_id: documentVersionId } : {}),
-    },
-    orderBy: { created_at: "asc" },
-  });
-
-  const candidates = [];
-  for (const change of changes) {
-    if (change.review_status !== "approved") {
-      return NextResponse.json({ error: `ChangeCandidate ${change.id} is not approved` }, { status: 400 });
-    }
-
-    const existing = await prisma.patchNoteCandidate.findFirst({
-      where: { change_candidate_id: change.id },
-      include: { change_candidate: true },
-    });
-
-    if (existing) {
-      candidates.push(existing);
-      continue;
-    }
-
-    candidates.push(
-      await prisma.patchNoteCandidate.create({
-        data: {
-          change_candidate_id: change.id,
-          draft_text: change.patch_note_draft ?? change.change_description,
-          category: change.category ?? "notice",
-          is_selected: false,
-        },
-        include: { change_candidate: true },
-      }),
+  try {
+    const candidates = await ensurePatchNoteCandidates(prisma as any, { documentVersionId });
+    return NextResponse.json({ candidates });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to load patch note candidates" },
+      { status: 400 },
     );
   }
-
-  return NextResponse.json({ candidates });
 }
 
 export async function PATCH(request: Request) {

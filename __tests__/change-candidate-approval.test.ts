@@ -30,6 +30,8 @@ function createTransactionalPrisma(options: { failOnDocumentVersion?: boolean } 
     designItems: [] as unknown[],
     changeCandidates: [] as Array<{ review_status: string }>,
     reviewQueueItems: [] as unknown[],
+    tags: [] as Array<{ id: string; name: string }>,
+    documentTags: [] as Array<{ document_version_id: string; tag_id: string }>,
   };
 
   const makeTx = (target: typeof state) => ({
@@ -82,6 +84,33 @@ function createTransactionalPrisma(options: { failOnDocumentVersion?: boolean } 
         return row;
       },
     },
+    tag: {
+      upsert: async ({ where, create }: { where: { name: string }; create: { name: string } }) => {
+        const existing = target.tags.find((tag) => tag.name === where.name);
+        if (existing) return existing;
+        const row = { id: `tag-${target.tags.length + 1}`, name: create.name };
+        target.tags.push(row);
+        return row;
+      },
+    },
+    documentTag: {
+      upsert: async ({
+        where,
+        create,
+      }: {
+        where: { document_version_id_tag_id: { document_version_id: string; tag_id: string } };
+        create: { document_version_id: string; tag_id: string };
+      }) => {
+        const existing = target.documentTags.find(
+          (row) =>
+            row.document_version_id === where.document_version_id_tag_id.document_version_id &&
+            row.tag_id === where.document_version_id_tag_id.tag_id,
+        );
+        if (existing) return existing;
+        target.documentTags.push(create);
+        return create;
+      },
+    },
   });
 
   const root = makeTx(state);
@@ -101,6 +130,8 @@ function createTransactionalPrisma(options: { failOnDocumentVersion?: boolean } 
         designItems: [...state.designItems],
         changeCandidates: [...state.changeCandidates],
         reviewQueueItems: [...state.reviewQueueItems],
+        tags: [...state.tags],
+        documentTags: [...state.documentTags],
       };
       const result = await callbackOrOperations(makeTx(draft));
       Object.assign(state, draft);
@@ -134,5 +165,16 @@ describe("saveApprovedImport", () => {
 
     expect(prisma.state.versions).toHaveLength(1);
     expect(prisma.state.changeCandidates).toHaveLength(0);
+  });
+
+  it("stores tags as Tag and DocumentTag rows", async () => {
+    const prisma = createTransactionalPrisma();
+    const payload = makeImport(1);
+    payload.tags = ["마법사", "스킬"];
+
+    await saveApprovedImport(payload, { prisma });
+
+    expect(prisma.state.tags.map((tag) => tag.name)).toEqual(["마법사", "스킬"]);
+    expect(prisma.state.documentTags).toHaveLength(2);
   });
 });

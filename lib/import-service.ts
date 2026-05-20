@@ -83,14 +83,36 @@ export async function saveApprovedImport(input: ImportJsonInput, deps: { prisma:
       );
     }
 
-    const firstDesignItemId = designItems[0]?.id ?? null;
+    for (const tagName of data.tags) {
+      const tag = await tx.tag.upsert({
+        where: { name: tagName },
+        update: {},
+        create: { name: tagName },
+      });
+      await tx.documentTag.upsert({
+        where: {
+          document_version_id_tag_id: {
+            document_version_id: documentVersion.id,
+            tag_id: tag.id,
+          },
+        },
+        update: {},
+        create: {
+          document_version_id: documentVersion.id,
+          tag_id: tag.id,
+        },
+      });
+    }
+
     const changeCandidates = [];
     for (const candidate of data.change_candidates) {
       changeCandidates.push(
         await tx.changeCandidate.create({
           data: {
             document_version_id: documentVersion.id,
-            design_item_id: firstDesignItemId,
+            // Week 1 JSON does not carry a stable item reference per change.
+            // Keep this null instead of guessing with the first DesignItem.
+            design_item_id: null,
             change_type: candidate.change_type,
             change_description: candidate.change_description,
             patch_note_draft: candidate.patch_note_draft,

@@ -237,7 +237,7 @@ model ChangeCandidate {
 
 model PatchNoteCandidate {
   id                  String            @id @default(uuid())
-  change_candidate_id String
+  change_candidate_id String            @unique
   change_candidate    ChangeCandidate   @relation(fields: [change_candidate_id], references: [id])
   draft_text          String            @db.Text
   category            PatchNoteCategory
@@ -247,7 +247,6 @@ model PatchNoteCandidate {
 
   patch_note_items    PatchNoteItem[]
 
-  @@index([change_candidate_id])
 }
 
 model ReviewQueueItem {

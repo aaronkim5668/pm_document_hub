@@ -118,6 +118,82 @@ describe("resolveLatestVersion", () => {
     expect(prisma.versions[0].is_latest).toBe(false);
   });
 
+  it("uses date-like version_label when version_date is absent", async () => {
+    const prisma = makePrisma([
+      {
+        id: "old-label",
+        document_id: "doc-1",
+        version_label: "2026-05-01",
+        version_date: null,
+        uploaded_at: new Date("2026-05-10"),
+        status: "draft",
+        is_latest: false,
+      },
+      {
+        id: "new-label",
+        document_id: "doc-1",
+        version_label: "2026-05-20",
+        version_date: null,
+        uploaded_at: new Date("2026-05-11"),
+        status: "draft",
+        is_latest: false,
+      },
+    ]);
+
+    await resolveLatestVersion(prisma, "doc-1");
+
+    expect(prisma.versions.find((version) => version.id === "new-label")?.is_latest).toBe(true);
+    expect(prisma.reviewQueueItems).toHaveLength(0);
+  });
+
+  it("uses semantic version_label when version_date is absent", async () => {
+    const prisma = makePrisma([
+      {
+        id: "v1",
+        document_id: "doc-1",
+        version_label: "v1.9.0",
+        version_date: null,
+        uploaded_at: new Date("2026-05-10"),
+        status: "draft",
+        is_latest: false,
+      },
+      {
+        id: "v2",
+        document_id: "doc-1",
+        version_label: "v1.10.0",
+        version_date: null,
+        uploaded_at: new Date("2026-05-11"),
+        status: "draft",
+        is_latest: false,
+      },
+    ]);
+
+    await resolveLatestVersion(prisma, "doc-1");
+
+    expect(prisma.versions.find((version) => version.id === "v2")?.is_latest).toBe(true);
+    expect(prisma.reviewQueueItems).toHaveLength(0);
+  });
+
+  it("creates no_version when version_label cannot be parsed", async () => {
+    const prisma = makePrisma([
+      {
+        id: "bad-label",
+        document_id: "doc-1",
+        version_label: "spring balance pass",
+        version_date: null,
+        uploaded_at: new Date("2026-05-10"),
+        status: "draft",
+        is_latest: false,
+      },
+    ]);
+
+    await resolveLatestVersion(prisma, "doc-1");
+
+    expect(prisma.reviewQueueItems).toEqual([
+      expect.objectContaining({ issue_type: "no_version", document_version_id: "bad-label" }),
+    ]);
+  });
+
   it("creates version_conflict and does not auto-replace approved latest versions", async () => {
     const prisma = makePrisma([
       {

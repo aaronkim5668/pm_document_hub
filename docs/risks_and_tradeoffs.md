@@ -15,7 +15,7 @@
 | **리스크** | 운영 환경에 pg_bigm 확장이 없으면 한국어 검색이 동작하지 않음 |
 | **발생 확률** | 중간 (표준 PostgreSQL 배포에는 미포함) |
 | **영향** | 검색이 핵심 진입점인데 동작 불가 → MVP 목표 달성 불가 |
-| **완화** | ① Docker Compose로 pg_bigm 포함 이미지 제공 (`pgbigm/pg_bigm:15-2.0`). ② 미설치 시 `ILIKE '%keyword%'` fallback 자동 전환. ③ 설치 스크립트 `setup.sh` 제공. ④ `검색 fallback 모드` 배너 표시 |
+| **완화** | ① Week 1 Docker Compose는 공식 `postgres:15` 이미지로 우선 진행. ② Week 2 검색 구현 시 pg_bigm은 선택적으로 활성화. ③ 미설치 시 `SEARCH_MODE=ilike` 기준으로 `ILIKE '%keyword%'` fallback 자동 전환. ④ `검색 fallback 모드` 배너 표시 |
 | **수용 기준** | fallback 모드에서도 검색 동작. pg_bigm 활성화 후 성능 격차 < 2x |
 
 ---

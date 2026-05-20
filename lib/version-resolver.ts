@@ -26,33 +26,97 @@ type VersionResolverPrisma = {
   $transaction(operations: Array<Promise<unknown>>): Promise<unknown[]>;
 };
 
+type ParsedVersion = {
+  kind: "date" | "semver";
+  score: number[];
+};
+
+function parseVersionLabel(label: string | null): ParsedVersion | null {
+  if (!label) return null;
+
+  const trimmed = label.trim();
+  const dateMatch = trimmed.match(/^(\d{4})[-./](\d{1,2})[-./](\d{1,2})$/);
+  if (dateMatch) {
+    const year = Number(dateMatch[1]);
+    const month = Number(dateMatch[2]);
+    const day = Number(dateMatch[3]);
+    const parsed = new Date(Date.UTC(year, month - 1, day));
+    if (parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month - 1 && parsed.getUTCDate() === day) {
+      return { kind: "date", score: [parsed.getTime()] };
+    }
+  }
+
+  const semverMatch = trimmed.match(/^v?(\d+)(?:\.(\d+))?(?:\.(\d+))?$/i);
+  if (semverMatch) {
+    return {
+      kind: "semver",
+      score: [Number(semverMatch[1]), Number(semverMatch[2] ?? 0), Number(semverMatch[3] ?? 0)],
+    };
+  }
+
+  return null;
+}
+
+function compareScoreDesc(a: number[], b: number[]) {
+  const length = Math.max(a.length, b.length);
+  for (let index = 0; index < length; index += 1) {
+    const diff = (b[index] ?? 0) - (a[index] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+async function markNeedsVersionReview(prisma: VersionResolverPrisma, versions: VersionRow[]) {
+  for (const version of versions) {
+    await prisma.reviewQueueItem.create({
+      data: {
+        document_version_id: version.id,
+        issue_type: "no_version",
+        description: "version_date가 없고 version_label을 파싱할 수 없습니다. 수동 확인이 필요합니다.",
+      },
+    });
+  }
+  return { status: "needs_review" as const, issue_type: "no_version" as const };
+}
+
 export async function resolveLatestVersion(prisma: VersionResolverPrisma, documentId: string) {
   const versions = await prisma.documentVersion.findMany({
     where: { document_id: documentId },
   });
 
-  const datedVersions = versions
+  let sortableVersions = versions
     .filter((version) => version.version_date != null)
+    .map((version) => ({ version, score: [version.version_date!.getTime()] }))
     .sort((a, b) => {
-      const dateDiff = b.version_date!.getTime() - a.version_date!.getTime();
+      const dateDiff = compareScoreDesc(a.score, b.score);
       if (dateDiff !== 0) return dateDiff;
-      return b.uploaded_at.getTime() - a.uploaded_at.getTime();
+      return b.version.uploaded_at.getTime() - a.version.uploaded_at.getTime();
     });
 
-  if (datedVersions.length === 0) {
-    for (const version of versions) {
-      await prisma.reviewQueueItem.create({
-        data: {
-          document_version_id: version.id,
-          issue_type: "no_version",
-          description: "문서에서 version_date를 확인할 수 없습니다. 수동 확인이 필요합니다.",
-        },
-      });
+  if (sortableVersions.length === 0) {
+    const parsedVersions = versions
+      .map((version) => ({ version, parsed: parseVersionLabel(version.version_label) }))
+      .filter((entry): entry is { version: VersionRow; parsed: ParsedVersion } => entry.parsed != null);
+
+    if (parsedVersions.length === 0) {
+      return markNeedsVersionReview(prisma, versions);
     }
-    return { status: "needs_review" as const, issue_type: "no_version" as const };
+
+    const firstKind = parsedVersions[0].parsed.kind;
+    if (parsedVersions.length !== versions.length || parsedVersions.some((entry) => entry.parsed.kind !== firstKind)) {
+      return markNeedsVersionReview(prisma, versions);
+    }
+
+    sortableVersions = parsedVersions
+      .map((entry) => ({ version: entry.version, score: entry.parsed.score }))
+      .sort((a, b) => {
+        const scoreDiff = compareScoreDesc(a.score, b.score);
+        if (scoreDiff !== 0) return scoreDiff;
+        return b.version.uploaded_at.getTime() - a.version.uploaded_at.getTime();
+      });
   }
 
-  const candidateLatest = datedVersions[0];
+  const candidateLatest = sortableVersions[0].version;
   const currentLatest = versions.find((version) => version.is_latest);
 
   if (
