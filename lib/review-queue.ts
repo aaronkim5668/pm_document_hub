@@ -65,6 +65,30 @@ export async function approveReviewQueueItem(prisma: ReviewQueuePrisma, id: stri
   });
 }
 
+export async function approveReviewQueueItemFromRequest(
+  prisma: ReviewQueuePrisma,
+  id: string,
+  input: { version_date?: string; version_label?: string },
+) {
+  const item = await requireQueueItem(prisma, id);
+
+  if (item.issue_type === "version_conflict") {
+    return approveReviewQueueItem(prisma, id);
+  }
+
+  if (item.issue_type === "no_version") {
+    if (!input.version_date && !input.version_label) {
+      throw new Error("version_date or version_label is required");
+    }
+    return resolveNoVersionReviewItem(prisma, id, {
+      version_date: input.version_date,
+      version_label: input.version_label,
+    });
+  }
+
+  throw new Error(`Unsupported review issue type: ${item.issue_type}`);
+}
+
 export async function rejectReviewQueueItem(prisma: ReviewQueuePrisma, id: string) {
   return prisma.$transaction(async (tx) => {
     const item = await requireQueueItem(tx, id);

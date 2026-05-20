@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { approveReviewQueueItem, deferReviewQueueItem, rejectReviewQueueItem, resolveNoVersionReviewItem } from "../lib/review-queue";
+import {
+  approveReviewQueueItem,
+  approveReviewQueueItemFromRequest,
+  deferReviewQueueItem,
+  rejectReviewQueueItem,
+  resolveNoVersionReviewItem,
+} from "../lib/review-queue";
 
-function makePrisma(issueType: "version_conflict" | "no_version" = "version_conflict") {
+function makePrisma(issueType: "version_conflict" | "no_version" | "low_confidence" = "version_conflict") {
   const versions = [
     { id: "current", document_id: "doc-1", status: "approved", is_latest: true },
     { id: "candidate", document_id: "doc-1", status: "draft", is_latest: false },
@@ -89,5 +95,44 @@ describe("review queue actions", () => {
 
     expect(prisma.versions.find((version) => version.id === "candidate")?.is_latest).toBe(false);
     expect(prisma.queue.status).toBe("approved");
+  });
+
+  it("routes version_conflict approval by DB issue_type even when metadata body is present", async () => {
+    const prisma = makePrisma("version_conflict");
+
+    await approveReviewQueueItemFromRequest(prisma, "queue-1", {
+      version_label: "v99.0",
+      version_date: "2026-06-01",
+    });
+
+    expect(prisma.calls).toContain("versions:updateMany");
+    expect(prisma.versions.find((version) => version.id === "candidate")?.is_latest).toBe(true);
+    expect(prisma.queue.status).toBe("approved");
+  });
+
+  it("rejects no_version approval when no version metadata is provided", async () => {
+    const prisma = makePrisma("no_version");
+
+    await expect(approveReviewQueueItemFromRequest(prisma, "queue-1", {})).rejects.toThrow(
+      "version_date or version_label is required",
+    );
+  });
+
+  it("routes no_version approval to metadata resolve without latest replacement", async () => {
+    const prisma = makePrisma("no_version");
+
+    await approveReviewQueueItemFromRequest(prisma, "queue-1", { version_date: "2026-05-20" });
+
+    expect(prisma.calls).not.toContain("versions:updateMany");
+    expect(prisma.versions.find((version) => version.id === "candidate")?.is_latest).toBe(false);
+    expect(prisma.queue.status).toBe("approved");
+  });
+
+  it("rejects unsupported issue_type during approval", async () => {
+    const prisma = makePrisma("low_confidence");
+
+    await expect(approveReviewQueueItemFromRequest(prisma, "queue-1", {})).rejects.toThrow(
+      "Unsupported review issue type",
+    );
   });
 });

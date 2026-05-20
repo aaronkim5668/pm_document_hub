@@ -17,12 +17,13 @@ type ReviewItem = {
   } | null;
 };
 
+type NoVersionInputs = Record<string, { version_label: string; version_date: string }>;
+
 export default function ReviewPage() {
   const [status, setStatus] = useState("pending");
   const [items, setItems] = useState<ReviewItem[]>([]);
   const [message, setMessage] = useState("");
-  const [versionLabel, setVersionLabel] = useState("");
-  const [versionDate, setVersionDate] = useState("");
+  const [noVersionInputs, setNoVersionInputs] = useState<NoVersionInputs>({});
 
   async function load() {
     const response = await fetch(`/api/review?status=${encodeURIComponent(status)}`);
@@ -35,19 +36,42 @@ export default function ReviewPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
 
-  async function action(id: string, actionName: "approve" | "reject" | "defer") {
+  function updateNoVersionInput(id: string, field: "version_label" | "version_date", value: string) {
+    setNoVersionInputs((current) => ({
+      ...current,
+      [id]: {
+        version_label: current[id]?.version_label ?? "",
+        version_date: current[id]?.version_date ?? "",
+        [field]: value,
+      },
+    }));
+  }
+
+  async function action(item: ReviewItem, actionName: "approve" | "reject" | "defer") {
     setMessage("");
+    const metadata = noVersionInputs[item.id];
     const body =
-      actionName === "approve" && (versionLabel || versionDate)
-        ? JSON.stringify({ version_label: versionLabel || undefined, version_date: versionDate || undefined })
+      actionName === "approve" && item.issue_type === "no_version"
+        ? JSON.stringify({
+            version_label: metadata?.version_label || undefined,
+            version_date: metadata?.version_date || undefined,
+          })
         : "{}";
-    const response = await fetch(`/api/review/${id}/${actionName}`, {
+
+    const response = await fetch(`/api/review/${item.id}/${actionName}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body,
     });
     const result = await response.json();
     setMessage(response.ok ? "처리되었습니다." : result.error ?? "처리 실패");
+    if (response.ok) {
+      setNoVersionInputs((current) => {
+        const next = { ...current };
+        delete next[item.id];
+        return next;
+      });
+    }
     await load();
   }
 
@@ -73,38 +97,50 @@ export default function ReviewPage() {
       {message ? <div className="panel muted">{message}</div> : null}
 
       <div className="list">
-        {items.map((item) => (
-          <div className="panel stack" key={item.id}>
-            <div>
-              <strong>{item.issue_type}</strong> · {item.status}
-              <p>{item.document_version?.normalized_doc?.title ?? item.description}</p>
-              {item.auto_suggestion ? <p className="muted">{item.auto_suggestion}</p> : null}
-            </div>
-            {item.issue_type === "no_version" ? (
-              <div className="grid">
-                <label className="label">
-                  version_label
-                  <input className="input" value={versionLabel} onChange={(event) => setVersionLabel(event.target.value)} />
-                </label>
-                <label className="label">
-                  version_date
-                  <input className="input" type="date" value={versionDate} onChange={(event) => setVersionDate(event.target.value)} />
-                </label>
+        {items.map((item) => {
+          const metadata = noVersionInputs[item.id] ?? { version_label: "", version_date: "" };
+          return (
+            <div className="panel stack" key={item.id}>
+              <div>
+                <strong>{item.issue_type}</strong> · {item.status}
+                <p>{item.document_version?.normalized_doc?.title ?? item.description}</p>
+                {item.auto_suggestion ? <p className="muted">{item.auto_suggestion}</p> : null}
               </div>
-            ) : null}
-            <div className="nav">
-              <button className="button primary" type="button" onClick={() => action(item.id, "approve")}>
-                승인
-              </button>
-              <button className="button" type="button" onClick={() => action(item.id, "defer")}>
-                보류
-              </button>
-              <button className="button" type="button" onClick={() => action(item.id, "reject")}>
-                거부
-              </button>
+              {item.issue_type === "no_version" ? (
+                <div className="grid">
+                  <label className="label">
+                    version_label
+                    <input
+                      className="input"
+                      value={metadata.version_label}
+                      onChange={(event) => updateNoVersionInput(item.id, "version_label", event.target.value)}
+                    />
+                  </label>
+                  <label className="label">
+                    version_date
+                    <input
+                      className="input"
+                      type="date"
+                      value={metadata.version_date}
+                      onChange={(event) => updateNoVersionInput(item.id, "version_date", event.target.value)}
+                    />
+                  </label>
+                </div>
+              ) : null}
+              <div className="nav">
+                <button className="button primary" type="button" onClick={() => action(item, "approve")}>
+                  승인
+                </button>
+                <button className="button" type="button" onClick={() => action(item, "defer")}>
+                  보류
+                </button>
+                <button className="button" type="button" onClick={() => action(item, "reject")}>
+                  거부
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </section>
   );
