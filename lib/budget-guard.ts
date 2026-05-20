@@ -1,8 +1,8 @@
-type DecimalLike = {
+export type DecimalLike = {
   toNumber(): number;
 };
 
-type BudgetConfig = {
+export type BudgetConfig = {
   id: string;
   monthly_budget_usd: DecimalLike;
   current_month_spend: DecimalLike;
@@ -10,7 +10,7 @@ type BudgetConfig = {
   is_locked: boolean;
 };
 
-type BudgetGuardPrisma = {
+export type BudgetGuardPrisma = {
   aIBudgetConfig: {
     findFirst(): Promise<BudgetConfig | null>;
     update(args: {
@@ -20,7 +20,7 @@ type BudgetGuardPrisma = {
         budget_month?: string;
         is_locked?: boolean;
       };
-    }): Promise<unknown>;
+    }): Promise<BudgetConfig>;
     upsert(args: {
       where: { id: string };
       update: Record<string, never>;
@@ -32,7 +32,7 @@ type BudgetGuardPrisma = {
         is_locked: boolean;
         alert_threshold_pct: number;
       };
-    }): Promise<unknown>;
+    }): Promise<BudgetConfig>;
   };
 };
 
@@ -49,7 +49,7 @@ export async function checkBudgetForPaidAiCall(
   let config = await prisma.aIBudgetConfig.findFirst();
 
   if (!config) {
-    await prisma.aIBudgetConfig.upsert({
+    config = await prisma.aIBudgetConfig.upsert({
       where: { id: "default" },
       update: {},
       create: {
@@ -61,14 +61,10 @@ export async function checkBudgetForPaidAiCall(
         alert_threshold_pct: 80,
       },
     });
-    throw new Error("AI API is disabled: budget config is missing");
   }
 
-  let currentSpendUsd = config.current_month_spend.toNumber();
-  let isLocked = config.is_locked;
-
   if (config.budget_month !== currentBudgetMonth) {
-    await prisma.aIBudgetConfig.update({
+    config = await prisma.aIBudgetConfig.update({
       where: { id: config.id },
       data: {
         current_month_spend: 0,
@@ -76,22 +72,16 @@ export async function checkBudgetForPaidAiCall(
         is_locked: false,
       },
     });
-    currentSpendUsd = 0;
-    isLocked = false;
-    config = {
-      ...config,
-      budget_month: currentBudgetMonth,
-      is_locked: false,
-    };
   }
 
   const monthlyBudgetUsd = config.monthly_budget_usd.toNumber();
+  const currentSpendUsd = config.current_month_spend.toNumber();
 
   if (monthlyBudgetUsd === 0) {
     throw new Error("AI API is disabled: monthly budget is 0");
   }
 
-  if (isLocked) {
+  if (config.is_locked) {
     throw new Error("AI budget exceeded");
   }
 

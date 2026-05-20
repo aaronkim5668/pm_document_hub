@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { Prisma } from "@prisma/client";
-import { checkBudgetForPaidAiCall } from "../lib/budget-guard";
+import { checkBudgetForPaidAiCall, type BudgetConfig } from "../lib/budget-guard";
 
-function makeConfig(monthlyBudgetUsd: string, currentSpendUsd = "0", overrides: Partial<{
+function makeConfig(monthlyBudgetUsd: string | number, currentSpendUsd: string | number = "0", overrides: Partial<{
   id: string;
   budget_month: string;
   is_locked: boolean;
-}> = {}) {
+}> = {}): BudgetConfig {
   return {
     id: overrides.id ?? "budget-config-1",
     monthly_budget_usd: new Prisma.Decimal(monthlyBudgetUsd),
@@ -19,19 +19,51 @@ function makeConfig(monthlyBudgetUsd: string, currentSpendUsd = "0", overrides: 
 function makePrisma(config: ReturnType<typeof makeConfig> | null) {
   const updates: unknown[] = [];
   const upserts: unknown[] = [];
+  let storedConfig = config;
 
   return {
     updates,
     upserts,
     aIBudgetConfig: {
-      findFirst: async () => config,
-      update: async (args: unknown) => {
+      findFirst: async () => storedConfig,
+      update: async (args: unknown): Promise<BudgetConfig> => {
         updates.push(args);
-        return { ...(config ?? {}), ...(args as { data?: object }).data };
+        const data = (args as { data?: Partial<{
+          current_month_spend: number;
+          budget_month: string;
+          is_locked: boolean;
+        }> }).data ?? {};
+        if (!storedConfig) {
+          throw new Error("missing config");
+        }
+        storedConfig = makeConfig(
+          storedConfig.monthly_budget_usd.toNumber(),
+          data.current_month_spend ?? storedConfig.current_month_spend.toNumber(),
+          {
+            id: storedConfig.id,
+            budget_month: data.budget_month ?? storedConfig.budget_month,
+            is_locked: data.is_locked ?? storedConfig.is_locked,
+          },
+        );
+        return storedConfig;
       },
-      upsert: async (args: unknown) => {
+      upsert: async (args: unknown): Promise<BudgetConfig> => {
         upserts.push(args);
-        return (args as { create: unknown }).create;
+        const create = (args as {
+          create: {
+            id: string;
+            monthly_budget_usd: number;
+            current_month_spend: number;
+            budget_month: string;
+            is_locked: boolean;
+          };
+        }).create;
+        storedConfig = makeConfig(create.monthly_budget_usd, create.current_month_spend, {
+          id: create.id,
+          budget_month: create.budget_month,
+          is_locked: create.is_locked,
+        });
+        return storedConfig;
       },
     },
   };
@@ -70,7 +102,7 @@ describe("checkBudgetForPaidAiCall", () => {
     );
   });
 
-  it("creates a safe default config and blocks when config is missing", async () => {
+  it("creates a safe default config and blocks by the budget=0 policy when config is missing", async () => {
     const prisma = makePrisma(null);
 
     await expect(
@@ -78,8 +110,20 @@ describe("checkBudgetForPaidAiCall", () => {
         estimatedCostUsd: 0.01,
         now: new Date("2026-05-20T00:00:00Z"),
       }),
-    ).rejects.toThrow("AI API is disabled");
-    expect(prisma.upserts).toHaveLength(1);
+    ).rejects.toThrow("monthly budget is 0");
+    expect(prisma.upserts).toEqual([
+      expect.objectContaining({
+        where: { id: "default" },
+        create: {
+          id: "default",
+          monthly_budget_usd: 0,
+          current_month_spend: 0,
+          budget_month: "2026-05",
+          is_locked: false,
+          alert_threshold_pct: 80,
+        },
+      }),
+    ]);
   });
 
   it("rolls over stale budget_month before checking budget", async () => {
@@ -94,6 +138,7 @@ describe("checkBudgetForPaidAiCall", () => {
 
     expect(prisma.updates).toEqual([
       expect.objectContaining({
+        where: { id: "budget-config-1" },
         data: {
           current_month_spend: 0,
           budget_month: "2026-05",
@@ -115,6 +160,7 @@ describe("checkBudgetForPaidAiCall", () => {
 
     expect(prisma.updates).toEqual([
       expect.objectContaining({
+        where: { id: "budget-config-1" },
         data: {
           is_locked: true,
         },
